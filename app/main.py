@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from app import sessions
+from src import race
 from src.data import pdf_course
 from src.schemas import CourseSession, Lesson, StudentProfile
 
@@ -244,6 +245,35 @@ async def submit_answer(
     return EventSourceResponse(
         _stream_blocking(blocking, result_type="result", result_serializer=serialize)
     )
+
+
+@app.post("/race")
+async def speed_race(topic: str | None = None):
+    """Stream a live GPU-vs-Cerebras race of the SAME model (Gemma 4 31B)."""
+
+    def blocking(sink: Callable[[dict], None]) -> dict:
+        return race.run_race(lambda ev: sink({"type": "race", **ev}), topic=topic)
+
+    async def gen():
+        async for item in _stream_blocking(
+            blocking,
+            result_type="race_summary",
+            result_serializer=lambda summary: summary,
+        ):
+            yield item
+
+    return EventSourceResponse(gen())
+
+
+@app.get("/race/config")
+def race_config() -> dict[str, Any]:
+    """Report which lanes are configured (so the UI can prompt for keys)."""
+    import os
+
+    return {
+        "cerebras": {"configured": bool(os.environ.get("CEREBRAS_API_KEY")), "model": race.CEREBRAS_MODEL},
+        "gemini": {"configured": bool(os.environ.get("GEMINI_API_KEY")), "model": race.GEMINI_MODEL},
+    }
 
 
 @app.get("/health")
