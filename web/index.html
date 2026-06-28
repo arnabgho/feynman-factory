@@ -59,8 +59,58 @@
       width: 100%; border: 1px solid var(--border); border-radius: 10px;
       background: #fff;
     }
-    iframe.video { aspect-ratio: 16 / 9; }
-    iframe.applet { height: 460px; }
+    /* Video: fixed 1280x720 composition scaled to fit a responsive 16:9 box. */
+    .video-wrap {
+      position: relative; width: 100%; aspect-ratio: 16 / 9;
+      overflow: hidden; border: 1px solid var(--border);
+      border-radius: 10px; background: #000;
+    }
+    iframe.video {
+      position: absolute; top: 0; left: 0;
+      width: 1280px; height: 720px; transform-origin: 0 0; border: 0;
+    }
+    iframe.applet { width: 100%; height: 560px; }
+    /* Video player chrome */
+    .player { position: relative; }
+    .player-overlay {
+      position: absolute; inset: 0; display: grid; place-items: center;
+      background: rgba(4,7,15,.32); cursor: pointer; transition: opacity .15s;
+      z-index: 3;
+    }
+    .player-overlay .play-btn {
+      width: 70px; height: 70px; border-radius: 50%;
+      background: rgba(11,15,26,.7); border: 1px solid rgba(255,255,255,.25);
+      display: grid; place-items: center; backdrop-filter: blur(4px);
+      box-shadow: 0 8px 30px rgba(0,0,0,.45);
+    }
+    .player-overlay .play-btn svg { width: 28px; height: 28px; fill: #fff; margin-left: 3px; }
+    .player-bar {
+      display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+      margin-top: 10px; background: var(--panel-2); border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .player-bar .icon-btn {
+      width: 34px; height: 34px; padding: 0; display: grid; place-items: center;
+      border-radius: 8px; flex: none;
+    }
+    .player-bar .icon-btn svg { width: 16px; height: 16px; fill: #0b0f1a; }
+    .player-bar .time {
+      font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted);
+      flex: none; min-width: 88px; text-align: right;
+    }
+    input[type=range].scrub {
+      -webkit-appearance: none; appearance: none; flex: 1; height: 6px;
+      border-radius: 5px; background: var(--border); cursor: pointer; outline: none;
+    }
+    input[type=range].scrub::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none; width: 15px; height: 15px;
+      border-radius: 50%; background: var(--accent); border: 2px solid #0b0f1a;
+      box-shadow: 0 0 0 3px rgba(110,168,254,.25);
+    }
+    input[type=range].scrub::-moz-range-thumb {
+      width: 15px; height: 15px; border-radius: 50%; background: var(--accent);
+      border: 2px solid #0b0f1a;
+    }
     .exercise {
       background: var(--panel-2); border: 1px solid var(--border);
       border-radius: 10px; padding: 14px; margin-top: 12px;
@@ -153,6 +203,150 @@
         <div class="speed-badge">
           <div class="big">${(totalMs / 1000).toFixed(2)}s</div>
           <div class="lbl">model time this lesson · Cerebras</div>
+        </div>`;
+    }
+
+    function fmtTime(s) {
+      if (!isFinite(s) || s < 0) s = 0;
+      const m = Math.floor(s / 60);
+      const sec = Math.floor(s % 60);
+      return `${m}:${sec.toString().padStart(2, "0")}`;
+    }
+
+    const PlayIcon = () => html`<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>`;
+    const PauseIcon = () => html`<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zm8 0h4v14h-4z" /></svg>`;
+    const ReplayIcon = () =>
+      html`<svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7a5 5 0 11-5 5H5a7 7 0 107-7z" /></svg>`;
+
+    function VideoFrame({ html: videoHtml }) {
+      const wrapRef = useRef(null);
+      const frameRef = useRef(null);
+      const [playing, setPlaying] = useState(false);
+      const [t, setT] = useState(0);
+      const [duration, setDuration] = useState(0);
+      const [hasPlayer, setHasPlayer] = useState(true);
+      const [seeking, setSeeking] = useState(false);
+      // Re-mount key lets Replay rebuild the iframe when there's no player runtime.
+      const [mountKey, setMountKey] = useState(0);
+
+      // Scale the fixed 1280x720 composition to fit the responsive 16:9 box.
+      useEffect(() => {
+        const wrap = wrapRef.current;
+        const frame = frameRef.current;
+        if (!wrap || !frame) return;
+        const fit = () => {
+          const scale = wrap.clientWidth / 1280;
+          frame.style.transform = `scale(${scale})`;
+        };
+        fit();
+        const ro = new ResizeObserver(fit);
+        ro.observe(wrap);
+        return () => ro.disconnect();
+      }, [videoHtml, mountKey]);
+
+      // Reset state whenever a new composition (or re-mount) loads.
+      useEffect(() => {
+        setPlaying(false);
+        setT(0);
+        setDuration(0);
+        setHasPlayer(true);
+      }, [videoHtml, mountKey]);
+
+      // Listen only to messages from this iframe's contentWindow.
+      useEffect(() => {
+        function onMsg(ev) {
+          const frame = frameRef.current;
+          if (!frame || ev.source !== frame.contentWindow) return;
+          const m = ev.data;
+          if (!m || m.source !== "player") return;
+          if (m.type === "ready") {
+            setDuration(m.duration || 0);
+            setHasPlayer(true);
+            setPlaying(true);
+          } else if (m.type === "time") {
+            if (typeof m.duration === "number") setDuration(m.duration);
+            if (!seeking) setT(m.t || 0);
+          } else if (m.type === "ended") {
+            setPlaying(false);
+          } else if (m.type === "noplayer") {
+            setHasPlayer(false);
+          }
+        }
+        window.addEventListener("message", onMsg);
+        return () => window.removeEventListener("message", onMsg);
+      }, [seeking]);
+
+      function send(action, time) {
+        const frame = frameRef.current;
+        if (!frame || !frame.contentWindow) return;
+        frame.contentWindow.postMessage({ source: "host", action, time }, "*");
+      }
+
+      function toggle() {
+        if (playing) {
+          send("pause");
+          setPlaying(false);
+        } else {
+          send("play");
+          setPlaying(true);
+        }
+      }
+
+      function onScrub(e) {
+        const v = parseFloat(e.target.value);
+        setT(v);
+        send("seek", v);
+      }
+
+      function replay() {
+        if (hasPlayer) {
+          send("restart");
+          setPlaying(true);
+        } else {
+          setMountKey((k) => k + 1); // rebuild iframe to re-run any auto animation
+        }
+      }
+
+      const pct = duration > 0 ? (t / duration) * 100 : 0;
+
+      return html`
+        <div class="player">
+          <div class="video-wrap" ref=${wrapRef}>
+            <iframe
+              class="video"
+              key=${mountKey}
+              ref=${frameRef}
+              srcdoc=${videoHtml}
+              sandbox="allow-scripts"
+            ></iframe>
+            ${hasPlayer && !playing &&
+            html`<div class="player-overlay" onClick=${toggle}>
+              <div class="play-btn"><${PlayIcon} /></div>
+            </div>`}
+          </div>
+          <div class="player-bar">
+            ${hasPlayer &&
+            html`<button class="icon-btn" onClick=${toggle} title=${playing ? "Pause" : "Play"}>
+              ${playing ? html`<${PauseIcon} />` : html`<${PlayIcon} />`}
+            </button>`}
+            ${hasPlayer &&
+            html`<input
+              class="scrub"
+              type="range"
+              min="0"
+              max=${duration || 0}
+              step="0.05"
+              value=${t}
+              style=${{ background: `linear-gradient(90deg, var(--accent) ${pct}%, var(--border) ${pct}%)` }}
+              onMouseDown=${() => setSeeking(true)}
+              onMouseUp=${() => setSeeking(false)}
+              onInput=${onScrub}
+            />`}
+            ${hasPlayer
+              ? html`<div class="time">${fmtTime(t)} / ${fmtTime(duration)}</div>`
+              : html`<div class="time" style=${{ flex: 1, textAlign: "left", minWidth: 0 }}>Static composition</div>`}
+            <button class="icon-btn" onClick=${replay} title="Replay"><${ReplayIcon} /></button>
+          </div>
         </div>`;
     }
 
@@ -311,7 +505,7 @@
               <h2>Explainer Video ${lesson && html`· ${lesson.concept.title}`}</h2>
               ${busy && !lesson && html`<div class="loading-bar"></div>`}
               ${lesson
-                ? html`<iframe class="frame video" srcdoc=${lesson.video_html} sandbox="allow-scripts"></iframe>`
+                ? html`<${VideoFrame} html=${lesson.video_html} />`
                 : html`<div class="muted" style=${{ padding: "40px 0", textAlign: "center" }}>Generating your lesson…</div>`}
             </div>
 

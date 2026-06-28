@@ -12,6 +12,15 @@ from src.schemas import Applet, LessonPlan
 SYSTEM = """You are a senior front-end engineer who builds tiny educational physics applets.
 Produce ONE complete, self-contained HTML document implementing the requested interactive.
 
+PROPORTIONS (the applet renders inside an iframe about 760px wide and 560px tall):
+- body { margin:0 }. Design responsively: use width:100% with max-width:100% and
+  box-sizing:border-box everywhere. NEVER cause horizontal scrolling.
+- Do NOT use min-height:100vh or fixed pixel widths wider than ~720px.
+- Lay out for ~760px width: prefer a single column or a layout that wraps; controls
+  must wrap rather than overflow.
+- Any <canvas> must use CSS width:100% (cap ~700px) while keeping its aspect ratio.
+- Keep total content height ~520-560px so it fits with minimal scrolling.
+
 Hard requirements:
 - A single HTML file: inline <style> and <script>, NO external libraries, NO network requests.
 - Use vanilla JS and <canvas> or DOM for visuals/animation.
