@@ -38,6 +38,42 @@ class LessonPlan:
 
 
 @dataclass
+class Slide:
+    """One slide in the explainer deck (input spec for the video build)."""
+
+    kind: str  # "title" | "content" | "diagram" | "recap"
+    title: str
+    bullets: list[str] = field(default_factory=list)
+    visual: str = ""  # description of the animation/diagram, or "none"
+    duration: float = 10.0  # seconds this slide is on screen
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "Slide":
+        return cls(
+            kind=str(d.get("kind", "content")),
+            title=str(d.get("title", "")),
+            bullets=[str(b) for b in d.get("bullets", [])],
+            visual=str(d.get("visual", "")),
+            duration=float(d.get("duration", 10.0)),
+        )
+
+
+@dataclass
+class SlideDeck:
+    """Output of the SlideDeckPlanner: an ordered, timed outline for the video."""
+
+    title: str
+    total_duration: float
+    slides: list[Slide] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "SlideDeck":
+        slides = [Slide.from_dict(s) for s in d.get("slides", [])]
+        total = float(d.get("total_duration", 0) or sum(s.duration for s in slides))
+        return cls(title=str(d.get("title", "")), total_duration=total, slides=slides)
+
+
+@dataclass
 class Applet:
     """Output of the Applet Builder agent (a self-contained HTML document)."""
 
@@ -178,6 +214,7 @@ class CourseSession:
     chapter: str
     concepts: list[Concept]
     exercise_bank: list[Exercise]
+    subject: str = "physics"
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     current_index: int = 0
     current_difficulty: int = 0  # 0 => use concept.seed_difficulty

@@ -158,6 +158,15 @@
     .meter > div { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
     .center { display: grid; place-items: center; min-height: 60vh; }
     .start-card { width: 420px; max-width: 92vw; text-align: left; }
+    .divider { display: flex; align-items: center; gap: 12px; margin: 18px 0; color: var(--muted); font-size: 12px; }
+    .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+    .dropzone {
+      display: block; text-align: center; cursor: pointer;
+      border: 1px dashed var(--border); border-radius: 12px; padding: 18px 14px;
+      background: var(--panel-2); transition: border-color .15s, background .15s;
+    }
+    .dropzone:hover { border-color: var(--accent); background: #1d2740; }
+    .dropzone .dz-icon { font-size: 26px; margin-bottom: 6px; }
     .field { margin-bottom: 12px; }
     .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
     .muted { color: var(--muted); font-size: 12px; }
@@ -475,6 +484,13 @@
         generate();
       }, []);
 
+      async function advanceLesson() {
+        const res = await fetch(`${API}/course/${session}/advance`, { method: "POST" });
+        const o = await res.json();
+        setOutline(o);
+        if (!o.finished) generate();
+      }
+
       async function submit() {
         if (!lesson) return;
         setGrading(true);
@@ -514,6 +530,14 @@
               <div class="panel">
                 <h2>Interactive Exercise</h2>
                 <iframe class="frame applet" srcdoc=${lesson.applet_html} sandbox="allow-scripts"></iframe>
+                ${!lesson.exercise &&
+                html`
+                  <div class="row" style=${{ marginTop: "14px" }}>
+                    ${outline.finished
+                      ? html`<div class="muted">Course complete · you've finished every concept.</div>`
+                      : html`<button onClick=${advanceLesson} disabled=${busy}>Next lesson →</button>`}
+                  </div>
+                `}
                 ${lesson.exercise &&
                 html`
                   <div class="exercise">
@@ -567,6 +591,8 @@
       const [name, setName] = useState("Maya");
       const [grade, setGrade] = useState("8th grade");
       const [starting, setStarting] = useState(false);
+      const [pdfFile, setPdfFile] = useState(null);
+      const [pdfBusy, setPdfBusy] = useState(false);
 
       async function start() {
         setStarting(true);
@@ -582,14 +608,33 @@
         }
       }
 
-      const totalMs = 0;
+      async function startFromPdf() {
+        if (!pdfFile) return;
+        setPdfBusy(true);
+        try {
+          const fd = new FormData();
+          fd.append("pdf", pdfFile);
+          fd.append("name", name);
+          fd.append("grade_level", grade);
+          const res = await fetch(`${API}/course/start_from_pdf`, { method: "POST", body: fd });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            alert("Could not build a course from that PDF: " + (err.detail || res.status));
+            return;
+          }
+          setOutline(await res.json());
+        } finally {
+          setPdfBusy(false);
+        }
+      }
+
       return html`
         <div class="app">
           <header class="top">
             <div class="brand">
               <span class="pill">Lesson Factory</span>
               <div>
-                <h1>Personalized Physics Tutor</h1>
+                <h1>Personalized Tutor</h1>
                 <div class="sub">Multi-agent · Cerebras ultra-fast inference · Gemma 4 31B</div>
               </div>
             </div>
@@ -608,11 +653,36 @@
                       <label>Grade level</label>
                       <input type="text" value=${grade} onInput=${(e) => setGrade(e.target.value)} />
                     </div>
-                    <button onClick=${start} disabled=${starting}>
-                      ${starting ? "Loading course…" : "Start learning"}
+                    <button onClick=${start} disabled=${starting || pdfBusy}>
+                      ${starting ? "Loading course…" : "Start physics course"}
                     </button>
-                    <div class="muted" style=${{ marginTop: "12px" }}>
+                    <div class="muted" style=${{ marginTop: "10px" }}>
                       Seeded from OpenStax Physics (CC BY 4.0) + PhysicsEval.
+                    </div>
+
+                    <div class="divider"><span>or upload your own</span></div>
+
+                    <label class="dropzone">
+                      <input
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        style=${{ display: "none" }}
+                        onChange=${(e) => setPdfFile(e.target.files[0] || null)}
+                      />
+                      <div class="dz-icon">📄</div>
+                      <div>${pdfFile ? pdfFile.name : "Choose a PDF lesson or short paper"}</div>
+                      <div class="muted">Any subject · we'll turn it into video lessons</div>
+                    </label>
+                    <button
+                      class=${pdfFile ? "" : "ghost"}
+                      style=${{ marginTop: "12px", width: "100%" }}
+                      onClick=${startFromPdf}
+                      disabled=${!pdfFile || pdfBusy || starting}
+                    >
+                      ${pdfBusy ? "Reading & building course…" : "Generate from PDF"}
+                    </button>
+                    <div class="muted" style=${{ marginTop: "8px" }}>
+                      Text-based PDFs only (scanned/image PDFs aren't supported yet).
                     </div>
                   </div>
                 </div>`

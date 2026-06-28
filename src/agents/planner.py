@@ -39,8 +39,11 @@ class Planner:
         diagnosis: Diagnosis,
         student: StudentProfile,
         grounding: str | None = None,
+        *,
+        subject: str = "physics",
     ) -> tuple[LessonPlan, LLMResult]:
         user = (
+            f"Subject: {subject}\n"
             f"Concept: {diagnosis.next_concept}\n"
             f"Difficulty (1-10): {diagnosis.difficulty}\n"
             f"Misconception to target: {diagnosis.misconception or 'none'}\n"

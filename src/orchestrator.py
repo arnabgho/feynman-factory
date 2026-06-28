@@ -17,6 +17,7 @@ from src.agents import (
     Critic,
     ExplainerVideo,
     Planner,
+    SlideDeckPlanner,
     Tutor,
 )
 from src.llm import CerebrasLLM, LLMResult
@@ -109,6 +110,7 @@ class LessonGenerator:
     def __init__(self, llm: CerebrasLLM | None = None, max_build_iters: int = 2):
         self.llm = llm or CerebrasLLM()
         self.planner = Planner(self.llm)
+        self.deck_planner = SlideDeckPlanner(self.llm)
         self.video = ExplainerVideo(self.llm)
         self.builder = AppletBuilder(self.llm)
         self.critic = Critic(self.llm)
@@ -133,6 +135,7 @@ class LessonGenerator:
         *,
         variant: str = "base",
         misconception: str | None = None,
+        subject: str = "physics",
         event_sink: EventSink | None = None,
     ) -> Lesson:
         diagnosis = Diagnosis(
@@ -143,14 +146,30 @@ class LessonGenerator:
         )
 
         self._emit(event_sink, "Planner", "start")
-        plan, t_plan = self.planner.run(diagnosis, student, grounding=concept.prose)
+        plan, t_plan = self.planner.run(
+            diagnosis, student, grounding=concept.prose, subject=subject
+        )
         self._emit(event_sink, "Planner", "done", t_plan, summary=plan.learning_objective)
 
-        # Build the explainer video and the interactive applet concurrently.
-        self._emit(event_sink, "ExplainerVideo", "start")
+        # Branch A: plan a slide deck, then build the (long) explainer video.
+        # Branch B: build the interactive applet. Run both branches concurrently.
+        def build_video() -> tuple[str, LLMResult]:
+            self._emit(event_sink, "SlideDeckPlanner", "start")
+            deck, t_deck = self.deck_planner.run(plan, difficulty, subject=subject)
+            self._emit(
+                event_sink,
+                "SlideDeckPlanner",
+                "done",
+                t_deck,
+                slides=len(deck.slides),
+                duration_s=round(deck.total_duration, 1),
+            )
+            self._emit(event_sink, "ExplainerVideo", "start")
+            return self.video.run(plan, deck, difficulty, subject=subject)
+
         self._emit(event_sink, "AppletBuilder", "start")
         with ThreadPoolExecutor(max_workers=2) as pool:
-            video_future = pool.submit(self.video.run, plan, difficulty)
+            video_future = pool.submit(build_video)
             applet_future = pool.submit(self.builder.run, plan)
             video_html, t_video = video_future.result()
             applet, t_applet = applet_future.result()

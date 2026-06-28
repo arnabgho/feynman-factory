@@ -96,12 +96,13 @@ class CourseRunner:
     ) -> CourseSession:
         seed = seed or load_seed_course()
         concepts = [Concept.from_dict(c) for c in seed["concepts"]]
-        bank = [Exercise.from_dict(e) for e in seed["exercise_bank"]]
+        bank = [Exercise.from_dict(e) for e in seed.get("exercise_bank", [])]
         return CourseSession(
             student=student,
             chapter=seed.get("chapter", ""),
             concepts=concepts,
             exercise_bank=bank,
+            subject=seed.get("subject", "physics"),
         )
 
     def _used_exercise_ids(self, session: CourseSession) -> set[str]:
@@ -134,6 +135,7 @@ class CourseRunner:
             session.student,
             variant=variant,
             misconception=misconception,
+            subject=session.subject,
             event_sink=event_sink,
         )
 
@@ -167,6 +169,16 @@ class CourseRunner:
             difficulty=max(1, current - 2),
             rationale="Struggling; re-teaching the concept more gently.",
         )
+
+    def advance(self, session: CourseSession) -> CourseSession:
+        """Move to the next concept without grading.
+
+        Used for document/concept-only courses that have no exercise to submit.
+        """
+        session.current_index += 1
+        session.current_difficulty = 0
+        session.current_lesson = None
+        return session
 
     def apply_decision(
         self, session: CourseSession, decision: ProgressionDecision

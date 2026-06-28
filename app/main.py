@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from app import sessions
+from src.data import pdf_course
 from src.schemas import CourseSession, Lesson, StudentProfile
 
 app = FastAPI(title="Lesson Factory")
@@ -49,6 +50,7 @@ def _course_outline(session: CourseSession) -> dict[str, Any]:
     return {
         "session_id": session.id,
         "chapter": session.chapter,
+        "subject": session.subject,
         "current_index": session.current_index,
         "total": len(session.concepts),
         "finished": session.finished,
@@ -132,11 +134,46 @@ def start_course(req: StartRequest) -> dict[str, Any]:
     return _course_outline(session)
 
 
+@app.post("/course/start_from_pdf")
+async def start_course_from_pdf(
+    pdf: UploadFile = File(...),
+    name: str = Form("Student"),
+    grade_level: str = Form("8th grade"),
+) -> dict[str, Any]:
+    suffix = Path(pdf.filename or "upload.pdf").suffix or ".pdf"
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    tmp.write(await pdf.read())
+    tmp.close()
+
+    try:
+        text = pdf_course.extract_text(tmp.name)
+        course = pdf_course.build_course(sessions.runner.llm, text)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    finally:
+        Path(tmp.name).unlink(missing_ok=True)
+
+    student = StudentProfile(name=name, grade_level=grade_level)
+    session = sessions.runner.start(student, seed=course)
+    sessions.create_session(session)
+    return _course_outline(session)
+
+
 @app.get("/course/{session_id}/state")
 def course_state(session_id: str) -> dict[str, Any]:
     session = sessions.get_session(session_id)
     if session is None:
         raise HTTPException(404, "Unknown session")
+    return _course_outline(session)
+
+
+@app.post("/course/{session_id}/advance")
+def advance_course(session_id: str) -> dict[str, Any]:
+    """Advance to the next concept without grading (document/concept-only courses)."""
+    session = sessions.get_session(session_id)
+    if session is None:
+        raise HTTPException(404, "Unknown session")
+    sessions.runner.advance(session)
     return _course_outline(session)
 
 
