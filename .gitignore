@@ -1,0 +1,22 @@
+# Secrets
+.env
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Generated data (reproducible via `uv run python -m src.data.build_seed`)
+data/seed_course.json
+data/raw/
+
+# Generated runtime artifacts
+out/
+
+# Node (only used for optional MP4 rendering)
+node_modules/
+
+# OS
+.DS_Store

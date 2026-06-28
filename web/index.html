@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lesson Factory - Cerebras x Gemma 4</title>
+  <style>
+    :root {
+      --bg: #0b0f1a;
+      --panel: #131a2b;
+      --panel-2: #1b2438;
+      --border: #263350;
+      --text: #e8edf7;
+      --muted: #8b98b5;
+      --accent: #6ea8fe;
+      --accent-2: #9b8cff;
+      --good: #4ade80;
+      --warn: #fbbf24;
+      --bad: #f87171;
+      --shadow: 0 8px 30px rgba(0,0,0,.35);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(1200px 600px at 80% -10%, #1a2236 0%, var(--bg) 60%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .app { max-width: 1280px; margin: 0 auto; padding: 20px; }
+    header.top {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 18px; background: var(--panel); border: 1px solid var(--border);
+      border-radius: 14px; box-shadow: var(--shadow); margin-bottom: 18px;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand h1 { font-size: 18px; margin: 0; letter-spacing: .2px; }
+    .brand .sub { color: var(--muted); font-size: 12px; }
+    .pill {
+      font-size: 12px; padding: 5px 10px; border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      color: #0b0f1a; font-weight: 700;
+    }
+    .speed-badge {
+      display: flex; flex-direction: column; align-items: flex-end;
+    }
+    .speed-badge .big { font-size: 22px; font-weight: 800; color: var(--accent); }
+    .speed-badge .lbl { font-size: 11px; color: var(--muted); }
+    .layout { display: grid; grid-template-columns: 1fr 360px; gap: 18px; }
+    @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } }
+    .panel {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 14px; padding: 16px; box-shadow: var(--shadow);
+    }
+    .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px;
+      color: var(--muted); margin: 0 0 12px; }
+    .stack > * + * { margin-top: 18px; }
+    iframe.frame {
+      width: 100%; border: 1px solid var(--border); border-radius: 10px;
+      background: #fff;
+    }
+    iframe.video { aspect-ratio: 16 / 9; }
+    iframe.applet { height: 460px; }
+    .exercise {
+      background: var(--panel-2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px; margin-top: 12px;
+    }
+    .exercise .q { font-size: 14px; line-height: 1.5; }
+    textarea, input[type=text] {
+      width: 100%; background: #0e1422; color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px; padding: 10px;
+      font-size: 14px; font-family: inherit; resize: vertical;
+    }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    button {
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      color: #0b0f1a; border: 0; border-radius: 9px; padding: 10px 16px;
+      font-weight: 700; cursor: pointer; font-size: 14px;
+    }
+    button.ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    label.file { font-size: 12px; color: var(--muted); cursor: pointer; }
+    .timeline-item {
+      display: flex; align-items: center; gap: 10px; padding: 8px 0;
+      border-bottom: 1px dashed var(--border);
+    }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+    .dot.run { background: var(--warn); animation: pulse 1s infinite; }
+    .dot.done { background: var(--good); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+    .timeline-item .name { flex: 1; font-size: 13px; }
+    .timeline-item .ms { font-variant-numeric: tabular-nums; color: var(--accent); font-size: 12px; }
+    .bar { height: 5px; background: var(--accent); border-radius: 3px; }
+    .concept-item { display: flex; align-items: center; gap: 10px; padding: 7px 0; font-size: 13px; }
+    .concept-item .idx { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center;
+      font-size: 11px; border: 1px solid var(--border); color: var(--muted); flex: none; }
+    .concept-item.active .idx { background: var(--accent); color: #0b0f1a; border-color: var(--accent); }
+    .concept-item.done .idx { background: var(--good); color: #0b0f1a; border-color: var(--good); }
+    .grade-card { border-radius: 12px; padding: 14px; margin-top: 14px; border: 1px solid var(--border); }
+    .grade-card.correct { background: rgba(74,222,128,.08); border-color: rgba(74,222,128,.4); }
+    .grade-card.incorrect { background: rgba(248,113,113,.08); border-color: rgba(248,113,113,.4); }
+    .decision { font-size: 13px; margin-top: 8px; color: var(--muted); }
+    .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px; }
+    .badge.advance { background: var(--good); color: #06210f; }
+    .badge.harder { background: var(--warn); color: #2a1c00; }
+    .badge.remediate { background: var(--accent); color: #061425; }
+    .meter { height: 8px; background: #0e1422; border-radius: 5px; overflow: hidden; margin-top: 4px; }
+    .meter > div { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+    .center { display: grid; place-items: center; min-height: 60vh; }
+    .start-card { width: 420px; max-width: 92vw; text-align: left; }
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .loading-bar { height: 3px; background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      background-size: 200% 100%; animation: slide 1.1s linear infinite; border-radius: 3px; }
+    @keyframes slide { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module">
+    import React, { useState, useRef, useEffect } from "https://esm.sh/react@18.3.1";
+    import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
+    import htm from "https://esm.sh/htm@3.1.1";
+
+    const html = htm.bind(React.createElement);
+    const API = "";
+
+    async function streamSSE(url, opts, onEvent) {
+      const res = await fetch(url, opts);
+      if (!res.ok || !res.body) throw new Error("Request failed: " + res.status);
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+        let idx;
+        while ((idx = buf.indexOf("\n\n")) >= 0) {
+          const chunk = buf.slice(0, idx);
+          buf = buf.slice(idx + 2);
+          const dataLine = chunk.split("\n").find((l) => l.startsWith("data:"));
+          if (dataLine) {
+            try { onEvent(JSON.parse(dataLine.slice(5).trim())); } catch (e) {}
+          }
+        }
+      }
+    }
+
+    function SpeedBadge({ totalMs }) {
+      return html`
+        <div class="speed-badge">
+          <div class="big">${(totalMs / 1000).toFixed(2)}s</div>
+          <div class="lbl">model time this lesson · Cerebras</div>
+        </div>`;
+    }
+
+    function AgentTimeline({ events }) {
+      const maxT = Math.max(0.001, ...events.map((e) => e.total_s || 0));
+      const total = events.reduce((s, e) => s + (e.total_s || 0), 0);
+      return html`
+        <div class="panel">
+          <div class="row" style=${{ justifyContent: "space-between", alignItems: "baseline" }}>
+            <h2 style=${{ margin: 0 }}>Agent Swarm (live)</h2>
+            <span style=${{ color: "var(--accent)", fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>
+              ${total.toFixed(2)}s
+            </span>
+          </div>
+          <div class="muted" style=${{ marginBottom: "10px" }}>total model time on Cerebras</div>
+          ${events.length === 0 && html`<div class="muted">Waiting for generation…</div>`}
+          ${events.map(
+            (e, i) => html`
+              <div class="timeline-item" key=${i}>
+                <div class=${"dot " + (e.status === "done" ? "done" : "run")}></div>
+                <div class="name">
+                  ${e.agent}
+                  ${e.note ? html`<span class="muted"> (${e.note})</span>` : ""}
+                  ${e.total_s
+                    ? html`<div class="bar" style=${{ width: (100 * e.total_s) / maxT + "%", marginTop: "4px" }}></div>`
+                    : html`<div class="loading-bar" style=${{ marginTop: "6px" }}></div>`}
+                </div>
+                <div class="ms">${e.total_s ? e.total_s.toFixed(2) + "s" : "…"}</div>
+              </div>`
+          )}
+        </div>`;
+    }
+
+    function ProgressTracker({ outline }) {
+      if (!outline) return null;
+      return html`
+        <div class="panel">
+          <h2>${outline.chapter}</h2>
+          ${outline.concepts.map(
+            (c) => html`
+              <div
+                key=${c.order}
+                class=${"concept-item " +
+                  (c.order < outline.current_index ? "done" : c.order === outline.current_index ? "active" : "")}
+              >
+                <div class="idx">${c.order < outline.current_index ? "✓" : c.order + 1}</div>
+                <div>${c.title}</div>
+              </div>`
+          )}
+        </div>`;
+    }
+
+    function GradeCard({ grade, decision }) {
+      if (!grade) return null;
+      return html`
+        <div class=${"grade-card " + (grade.correct ? "correct" : "incorrect")}>
+          <div class="row" style=${{ justifyContent: "space-between" }}>
+            <strong>${grade.correct ? "Correct!" : "Not quite"}</strong>
+            <span class=${"badge " + decision.action}>${decision.action.toUpperCase()}</span>
+          </div>
+          <div style=${{ marginTop: "8px", fontSize: "14px" }}>${grade.feedback}</div>
+          ${grade.misconception &&
+          html`<div class="muted" style=${{ marginTop: "6px" }}>Misconception: ${grade.misconception}</div>`}
+          <div class="row" style=${{ marginTop: "10px", gap: "18px" }}>
+            <div style=${{ flex: 1 }}>
+              <div class="muted">Score</div>
+              <div class="meter"><div style=${{ width: grade.score * 100 + "%" }}></div></div>
+            </div>
+            <div style=${{ flex: 1 }}>
+              <div class="muted">Mastery</div>
+              <div class="meter"><div style=${{ width: grade.mastery * 100 + "%" }}></div></div>
+            </div>
+          </div>
+          <div class="decision">${decision.rationale}</div>
+        </div>`;
+    }
+
+    function LessonView({ session, outline, setOutline }) {
+      const [events, setEvents] = useState([]);
+      const [lesson, setLesson] = useState(null);
+      const [answer, setAnswer] = useState("");
+      const [imageFile, setImageFile] = useState(null);
+      const [grade, setGrade] = useState(null);
+      const [decision, setDecision] = useState(null);
+      const [busy, setBusy] = useState(false);
+      const [grading, setGrading] = useState(false);
+
+      const totalMs = events.reduce((s, e) => s + (e.total_s ? e.total_s * 1000 : 0), 0);
+
+      async function generate() {
+        setBusy(true);
+        setEvents([]);
+        setLesson(null);
+        setGrade(null);
+        setDecision(null);
+        setAnswer("");
+        setImageFile(null);
+        try {
+          await streamSSE(`${API}/course/${session}/lesson/generate`, { method: "POST" }, (ev) => {
+            if (ev.type === "agent") {
+              setEvents((prev) => {
+                // collapse start+done into the latest entry per agent occurrence
+                if (ev.status === "done") {
+                  const idx = [...prev].reverse().findIndex((p) => p.agent === ev.agent && !p.total_s);
+                  if (idx >= 0) {
+                    const real = prev.length - 1 - idx;
+                    const copy = prev.slice();
+                    copy[real] = { ...copy[real], ...ev };
+                    return copy;
+                  }
+                }
+                return [...prev, ev];
+              });
+            } else if (ev.type === "lesson") {
+              setLesson(ev);
+            } else if (ev.type === "error") {
+              alert("Generation error: " + ev.message);
+            }
+          });
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      useEffect(() => {
+        generate();
+      }, []);
+
+      async function submit() {
+        if (!lesson) return;
+        setGrading(true);
+        const fd = new FormData();
+        fd.append("answer_text", answer);
+        if (imageFile) fd.append("image", imageFile);
+        try {
+          await streamSSE(`${API}/course/${session}/lesson/submit`, { method: "POST", body: fd }, (ev) => {
+            if (ev.type === "agent") {
+              setEvents((prev) => [...prev, ev]);
+            } else if (ev.type === "result") {
+              setGrade(ev.grade);
+              setDecision(ev.decision);
+              setOutline((o) => ({ ...o, current_index: ev.next_index, finished: ev.finished }));
+            } else if (ev.type === "error") {
+              alert("Grading error: " + ev.message);
+            }
+          });
+        } finally {
+          setGrading(false);
+        }
+      }
+
+      return html`
+        <div class="layout">
+          <div class="stack">
+            <div class="panel">
+              <h2>Explainer Video ${lesson && html`· ${lesson.concept.title}`}</h2>
+              ${busy && !lesson && html`<div class="loading-bar"></div>`}
+              ${lesson
+                ? html`<iframe class="frame video" srcdoc=${lesson.video_html} sandbox="allow-scripts"></iframe>`
+                : html`<div class="muted" style=${{ padding: "40px 0", textAlign: "center" }}>Generating your lesson…</div>`}
+            </div>
+
+            ${lesson &&
+            html`
+              <div class="panel">
+                <h2>Interactive Exercise</h2>
+                <iframe class="frame applet" srcdoc=${lesson.applet_html} sandbox="allow-scripts"></iframe>
+                ${lesson.exercise &&
+                html`
+                  <div class="exercise">
+                    <div class="muted">Problem · difficulty ${lesson.exercise.difficulty}</div>
+                    <div class="q">${lesson.exercise.problem}</div>
+                  </div>
+                  <div class="field" style=${{ marginTop: "12px" }}>
+                    <label>Your answer</label>
+                    <textarea
+                      rows="3"
+                      value=${answer}
+                      onInput=${(e) => setAnswer(e.target.value)}
+                      placeholder="Type your reasoning and final answer…"
+                    ></textarea>
+                  </div>
+                  <div class="row">
+                    <button onClick=${submit} disabled=${grading || (!answer && !imageFile)}>
+                      ${grading ? "Grading…" : "Submit answer"}
+                    </button>
+                    <label class="file">
+                      📎 ${imageFile ? imageFile.name : "attach a photo of your work"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        style=${{ display: "none" }}
+                        onChange=${(e) => setImageFile(e.target.files[0] || null)}
+                      />
+                    </label>
+                  </div>
+                  <${GradeCard} grade=${grade} decision=${decision} />
+                  ${grade &&
+                  html`<div class="row" style=${{ marginTop: "12px" }}>
+                    <button onClick=${generate} disabled=${busy}>
+                      ${outline.finished ? "Course complete · regenerate" : decision.action === "advance" ? "Next lesson →" : "Try the new version →"}
+                    </button>
+                  </div>`}
+                `}
+              </div>
+            `}
+          </div>
+
+          <div class="stack">
+            <${ProgressTracker} outline=${outline} />
+            <${AgentTimeline} events=${events} />
+          </div>
+        </div>`;
+    }
+
+    function App() {
+      const [outline, setOutline] = useState(null);
+      const [name, setName] = useState("Maya");
+      const [grade, setGrade] = useState("8th grade");
+      const [starting, setStarting] = useState(false);
+
+      async function start() {
+        setStarting(true);
+        try {
+          const res = await fetch(`${API}/course/start`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, grade_level: grade }),
+          });
+          setOutline(await res.json());
+        } finally {
+          setStarting(false);
+        }
+      }
+
+      const totalMs = 0;
+      return html`
+        <div class="app">
+          <header class="top">
+            <div class="brand">
+              <span class="pill">Lesson Factory</span>
+              <div>
+                <h1>Personalized Physics Tutor</h1>
+                <div class="sub">Multi-agent · Cerebras ultra-fast inference · Gemma 4 31B</div>
+              </div>
+            </div>
+          </header>
+
+          ${!outline
+            ? html`
+                <div class="center">
+                  <div class="panel start-card">
+                    <h2>Start a course</h2>
+                    <div class="field">
+                      <label>Student name</label>
+                      <input type="text" value=${name} onInput=${(e) => setName(e.target.value)} />
+                    </div>
+                    <div class="field">
+                      <label>Grade level</label>
+                      <input type="text" value=${grade} onInput=${(e) => setGrade(e.target.value)} />
+                    </div>
+                    <button onClick=${start} disabled=${starting}>
+                      ${starting ? "Loading course…" : "Start learning"}
+                    </button>
+                    <div class="muted" style=${{ marginTop: "12px" }}>
+                      Seeded from OpenStax Physics (CC BY 4.0) + PhysicsEval.
+                    </div>
+                  </div>
+                </div>`
+            : html`<${LessonView} session=${outline.session_id} outline=${outline} setOutline=${setOutline} />`}
+        </div>`;
+    }
+
+    createRoot(document.getElementById("root")).render(html`<${App} />`);
+  </script>
+</body>
+</html>
