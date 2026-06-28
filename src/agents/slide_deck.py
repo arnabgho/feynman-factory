@@ -73,14 +73,19 @@ class SlideDeckPlanner:
         difficulty: int,
         *,
         subject: str = "physics",
+        remix: str | None = None,
     ) -> tuple[SlideDeck, LLMResult]:
         beats = "\n".join(f"- {b}" for b in plan.explanation_beats)
+        remix_line = (
+            f"REMIX DIRECTIVE (shape the deck this way): {remix}\n" if remix else ""
+        )
         user = (
             f"Subject: {subject}\n"
             f"Concept: {plan.concept}\n"
             f"Learning objective: {plan.learning_objective}\n"
             f"Target difficulty (1-10): {difficulty}\n"
-            f"Explanation beats:\n{beats}\n\n"
+            f"Explanation beats:\n{beats}\n"
+            f"{remix_line}\n"
             "Plan the 90-120s slide deck now (8-14 slides). Ensure slide "
             "durations sum to total_duration."
         )

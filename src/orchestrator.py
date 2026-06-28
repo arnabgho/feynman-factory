@@ -136,6 +136,7 @@ class LessonGenerator:
         variant: str = "base",
         misconception: str | None = None,
         subject: str = "physics",
+        remix: str | None = None,
         event_sink: EventSink | None = None,
     ) -> Lesson:
         diagnosis = Diagnosis(
@@ -145,9 +146,9 @@ class LessonGenerator:
             rationale=f"Course concept {concept.order}: {concept.title}",
         )
 
-        self._emit(event_sink, "Planner", "start")
+        self._emit(event_sink, "Planner", "start", note=(remix or None))
         plan, t_plan = self.planner.run(
-            diagnosis, student, grounding=concept.prose, subject=subject
+            diagnosis, student, grounding=concept.prose, subject=subject, remix=remix
         )
         self._emit(event_sink, "Planner", "done", t_plan, summary=plan.learning_objective)
 
@@ -155,7 +156,9 @@ class LessonGenerator:
         # Branch B: build the interactive applet. Run both branches concurrently.
         def build_video() -> tuple[str, LLMResult]:
             self._emit(event_sink, "SlideDeckPlanner", "start")
-            deck, t_deck = self.deck_planner.run(plan, difficulty, subject=subject)
+            deck, t_deck = self.deck_planner.run(
+                plan, difficulty, subject=subject, remix=remix
+            )
             self._emit(
                 event_sink,
                 "SlideDeckPlanner",
@@ -165,7 +168,7 @@ class LessonGenerator:
                 duration_s=round(deck.total_duration, 1),
             )
             self._emit(event_sink, "ExplainerVideo", "start")
-            return self.video.run(plan, deck, difficulty, subject=subject)
+            return self.video.run(plan, deck, difficulty, subject=subject, remix=remix)
 
         self._emit(event_sink, "AppletBuilder", "start")
         with ThreadPoolExecutor(max_workers=2) as pool:

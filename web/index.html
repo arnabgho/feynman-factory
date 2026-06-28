@@ -173,6 +173,18 @@
     .loading-bar { height: 3px; background: linear-gradient(90deg, transparent, var(--accent), transparent);
       background-size: 200% 100%; animation: slide 1.1s linear infinite; border-radius: 3px; }
     @keyframes slide { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+    /* Remix controls */
+    .remix { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border); }
+    .remix-label { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip-btn {
+      background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+      border-radius: 999px; padding: 7px 13px; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .chip-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .chip-btn.confused { border-color: rgba(251,191,36,.5); color: var(--warn); }
+    .chip-btn.confused:hover:not(:disabled) { border-color: var(--warn); }
+    .chip-btn:disabled { opacity: .5; cursor: not-allowed; }
     /* Speed race */
     .overlay {
       position: fixed; inset: 0; background: rgba(4,7,15,.72); z-index: 50;
@@ -255,6 +267,19 @@
 
     // Estimated max tokens for the race prompt (RACE_MAX_TOKENS≈700 -> ~175 tok).
     const RACE_TOK_MAX = 180;
+
+    const REMIX_PRESETS = [
+      {
+        label: "I'm confused",
+        confused: true,
+        dir: "The student is confused. Re-explain this concept much more slowly and simply, assume no prior knowledge, break it into smaller steps, and use one concrete everyday analogy.",
+      },
+      { label: "Simpler", dir: "Use simpler language and shorter sentences, suitable for a younger learner." },
+      { label: "Use an analogy", dir: "Re-explain primarily through a vivid real-world analogy that maps each idea to something familiar." },
+      { label: "Real-world", dir: "Anchor every idea in concrete real-world examples and applications the student would recognize." },
+      { label: "ELI5", dir: "Explain like I'm five: extremely simple and playful, with almost no jargon." },
+      { label: "Add a worked example", dir: "Add a fully worked step-by-step example that applies the concept end to end." },
+    ];
 
     function RaceLane({ provider, d, text, done }) {
       const isCb = provider === "cerebras";
@@ -608,10 +633,12 @@
       const [decision, setDecision] = useState(null);
       const [busy, setBusy] = useState(false);
       const [grading, setGrading] = useState(false);
+      const [remixText, setRemixText] = useState("");
 
       const totalMs = events.reduce((s, e) => s + (e.total_s ? e.total_s * 1000 : 0), 0);
 
-      async function generate() {
+      async function generate(remix) {
+        const remixDir = typeof remix === "string" ? remix.trim() : "";
         setBusy(true);
         setEvents([]);
         setLesson(null);
@@ -619,8 +646,9 @@
         setDecision(null);
         setAnswer("");
         setImageFile(null);
+        const qs = remixDir ? `?remix=${encodeURIComponent(remixDir)}` : "";
         try {
-          await streamSSE(`${API}/course/${session}/lesson/generate`, { method: "POST" }, (ev) => {
+          await streamSSE(`${API}/course/${session}/lesson/generate${qs}`, { method: "POST" }, (ev) => {
             if (ev.type === "agent") {
               setEvents((prev) => {
                 // collapse start+done into the latest entry per agent occurrence
@@ -689,6 +717,38 @@
               ${lesson
                 ? html`<${VideoFrame} html=${lesson.video_html} />`
                 : html`<div class="muted" style=${{ padding: "40px 0", textAlign: "center" }}>Generating your lesson…</div>`}
+
+              ${lesson &&
+              html`
+                <div class="remix">
+                  <div class="remix-label">
+                    Not landing? Remix this explanation
+                    <span class="muted"> · re-generated in seconds on Cerebras</span>
+                  </div>
+                  <div class="chips">
+                    ${REMIX_PRESETS.map(
+                      (p) => html`<button
+                        class="chip-btn ${p.confused ? "confused" : ""}"
+                        key=${p.label}
+                        disabled=${busy}
+                        onClick=${() => generate(p.dir)}
+                      >${p.label}</button>`
+                    )}
+                  </div>
+                  <div class="row" style=${{ marginTop: "8px" }}>
+                    <input
+                      type="text"
+                      value=${remixText}
+                      onInput=${(e) => setRemixText(e.target.value)}
+                      onKeyDown=${(e) => e.key === "Enter" && remixText.trim() && !busy && generate(remixText)}
+                      placeholder="…or describe it: 'use a soccer analogy', 'in Spanish', 'with a worked example'"
+                      style=${{ flex: 1 }}
+                    />
+                    <button class=${remixText.trim() ? "" : "ghost"} disabled=${busy || !remixText.trim()} onClick=${() => generate(remixText)}>
+                      ${busy ? "Remixing…" : "Remix ▶"}
+                    </button>
+                  </div>
+                </div>`}
             </div>
 
             ${lesson &&
@@ -736,7 +796,7 @@
                   <${GradeCard} grade=${grade} decision=${decision} />
                   ${grade &&
                   html`<div class="row" style=${{ marginTop: "12px" }}>
-                    <button onClick=${generate} disabled=${busy}>
+                    <button onClick=${() => generate()} disabled=${busy}>
                       ${outline.finished ? "Course complete · regenerate" : decision.action === "advance" ? "Next lesson →" : "Try the new version →"}
                     </button>
                   </div>`}

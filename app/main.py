@@ -179,7 +179,7 @@ def advance_course(session_id: str) -> dict[str, Any]:
 
 
 @app.post("/course/{session_id}/lesson/generate")
-async def generate_lesson(session_id: str):
+async def generate_lesson(session_id: str, remix: str | None = None):
     session = sessions.get_session(session_id)
     if session is None:
         raise HTTPException(404, "Unknown session")
@@ -187,7 +187,7 @@ async def generate_lesson(session_id: str):
         raise HTTPException(400, "Course finished")
 
     def blocking(sink: Callable[[dict], None]) -> Lesson:
-        return sessions.runner.generate_lesson(session, event_sink=sink)
+        return sessions.runner.generate_lesson(session, remix=remix, event_sink=sink)
 
     return EventSourceResponse(
         _stream_blocking(

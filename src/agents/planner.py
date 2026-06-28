@@ -41,6 +41,7 @@ class Planner:
         grounding: str | None = None,
         *,
         subject: str = "physics",
+        remix: str | None = None,
     ) -> tuple[LessonPlan, LLMResult]:
         user = (
             f"Subject: {subject}\n"
@@ -51,6 +52,11 @@ class Planner:
         )
         if grounding:
             user += f"\nSource material to ground the lesson in:\n{grounding[:2000]}\n"
+        if remix:
+            user += (
+                "\nSPECIAL REMIX DIRECTIVE (re-teach the SAME concept and objective, "
+                f"but change HOW it is explained): {remix}\n"
+            )
         user += "\nDesign the micro-lesson and applet spec."
         result = self.llm.chat(
             SYSTEM, user, schema=SCHEMA, schema_name="lesson_plan", temperature=0.4

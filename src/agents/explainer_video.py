@@ -101,12 +101,19 @@ class ExplainerVideo:
         difficulty: int,
         *,
         subject: str = "physics",
+        remix: str | None = None,
     ) -> tuple[str, LLMResult]:
+        remix_line = (
+            f"REMIX DIRECTIVE (reflect this in tone/wording/visuals): {remix}\n\n"
+            if remix
+            else ""
+        )
         user = (
             f"Subject: {subject}\n"
             f"Concept: {plan.concept}\n"
             f"Learning objective: {plan.learning_objective}\n"
             f"Target difficulty (1-10): {difficulty}\n\n"
+            f"{remix_line}"
             f"{_format_deck(deck)}\n\n"
             "Build the seekable slide-deck explainer document now. Define "
             "window.player = { duration, render(t) } with duration = "

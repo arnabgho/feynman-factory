@@ -114,6 +114,7 @@ class CourseRunner:
         *,
         variant: str = "base",
         misconception: str | None = None,
+        remix: str | None = None,
         event_sink: EventSink | None = None,
         render_video: bool = False,
     ) -> Lesson:
@@ -122,12 +123,17 @@ class CourseRunner:
             raise RuntimeError("Course is already finished.")
 
         difficulty = session.effective_difficulty()
-        exercise = select_exercise(
-            session.exercise_bank,
-            difficulty,
-            keywords=concept_keywords(concept),
-            exclude_ids=self._used_exercise_ids(session),
-        )
+        # On a remix we re-explain the SAME concept; keep the same exercise so
+        # only the explanation changes. Otherwise pick a fresh, relevant one.
+        if remix and session.current_lesson and session.current_lesson.exercise:
+            exercise = session.current_lesson.exercise
+        else:
+            exercise = select_exercise(
+                session.exercise_bank,
+                difficulty,
+                keywords=concept_keywords(concept),
+                exclude_ids=self._used_exercise_ids(session),
+            )
         lesson = self.generator.generate(
             concept,
             difficulty,
@@ -136,6 +142,7 @@ class CourseRunner:
             variant=variant,
             misconception=misconception,
             subject=session.subject,
+            remix=remix,
             event_sink=event_sink,
         )
 
