@@ -548,6 +548,31 @@
     }
     @keyframes spin360 { to { transform: rotate(360deg); } }
 
+    /* Full-system race */
+    .race-tabs {
+      display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px;
+      background: var(--surface); border: 1px solid var(--border); margin-bottom: 14px;
+    }
+    .race-tab {
+      background: transparent; border: 0; box-shadow: none; color: var(--muted);
+      padding: 7px 15px; border-radius: 999px; font-size: 12.5px; font-weight: 700; cursor: pointer;
+    }
+    .race-tab::after { display: none; }
+    .race-tab.active { background: linear-gradient(95deg, var(--accent), var(--accent-2)); color: #060912; }
+    .race-modal.wide { width: 1120px; max-height: 90vh; overflow: auto; }
+    .lane.sys { display: flex; flex-direction: column; }
+    .lane-timer { font-family: "Space Grotesk", sans-serif; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+    .sys-agents { margin-top: 10px; display: flex; flex-direction: column; }
+    .sys-agent { display: flex; align-items: center; gap: 9px; padding: 5px 0; font-size: 12.5px; border-bottom: 1px solid var(--border); }
+    .sys-agent:last-child { border-bottom: 0; }
+    .sys-agent .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; margin-top: 0; }
+    .sys-agent .dot.run { background: var(--warn); box-shadow: 0 0 0 3px rgba(251,191,36,.16); animation: pulse 1s infinite; }
+    .sys-agent .dot.done { background: var(--good); box-shadow: 0 0 0 3px rgba(74,222,128,.14); }
+    .sys-agent .nm { flex: 1; }
+    .sys-agent .ms { font-family: "JetBrains Mono", monospace; color: var(--accent); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+    .sys-artifacts { margin-top: 12px; }
+    .sys-artifacts .applet { height: 340px; margin-top: 10px; }
+
     /* Reduced motion */
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after {
@@ -773,7 +798,65 @@
       </div>`;
     }
 
+    // Live wall-clock for a lane: ticks while running, freezes at elapsed on done.
+    function LaneTimer({ startedAt, elapsed, running }) {
+      const [now, setNow] = useState(() => Date.now());
+      useEffect(() => {
+        if (!running || !startedAt) return;
+        const id = setInterval(() => setNow(Date.now()), 100);
+        return () => clearInterval(id);
+      }, [running, startedAt]);
+      const secs = elapsed != null ? elapsed : startedAt ? (now - startedAt) / 1000 : 0;
+      return html`<span class="lane-timer">${secs.toFixed(1)}s</span>`;
+    }
+
+    // One lane of the full-system race: live agent swarm + final artifacts.
+    function SysLane({ provider, lane, win, dim }) {
+      const isCb = provider === "cerebras";
+      const status = lane.status;
+      const events = lane.events || [];
+      const running = status === "running";
+      return html`
+        <div class=${"lane sys " + provider + (win ? " win" : "") + (dim ? " dim" : "")}>
+          <div class="lane-top">
+            <div class="lane-name">
+              <span class="lane-mono">${isCb ? "C" : "G"}</span>
+              ${isCb ? "Cerebras" : "Gemini (GPU)"}
+              <span class="chip">${isCb ? "gemma-4-31b" : "gemma-4-31b-it"}</span>
+            </div>
+            ${win && html`<span class="winner"><${Icon} name="trophy" size=${14} /> winner</span>`}
+          </div>
+          <div class="lane-stats" style=${{ marginBottom: "4px" }}>
+            ${status === "unconfigured"
+              ? "set GEMINI_API_KEY in .env"
+              : status === "error"
+              ? "error: " + (lane.message || "failed")
+              : html`<${LaneTimer} startedAt=${lane.startedAt} elapsed=${lane.elapsed_s} running=${running} /> wall${
+                  lane.model_time_s != null ? " · " + lane.model_time_s.toFixed(1) + "s model" : ""
+                }`}
+          </div>
+          ${(running || events.length > 0) &&
+          html`<div class="sys-agents">
+            ${events.length === 0 && running && html`<div class="muted">spinning up the agent swarm…</div>`}
+            ${events.map(
+              (e, i) => html`<div class="sys-agent" key=${i}>
+                <span class=${"dot " + (e.status === "done" ? "done" : "run")}></span>
+                <span class="nm">${e.agent}${e.note ? html`<span class="muted"> (${e.note})</span>` : ""}</span>
+                <span class="ms">${e.total_s ? e.total_s.toFixed(2) + "s" : "…"}</span>
+              </div>`
+            )}
+          </div>`}
+          ${status === "done" && lane.video_html &&
+          html`<div class="sys-artifacts">
+            <${VideoFrame} html=${lane.video_html} />
+            ${lane.applet_html &&
+            html`<iframe class="frame applet" srcdoc=${lane.applet_html} sandbox="allow-scripts"></iframe>`}
+          </div>`}
+        </div>`;
+    }
+
     function RacePanel({ onClose }) {
+      const [mode, setMode] = useState("prompt");
       const [topic, setTopic] = useState("projectile motion");
       const [running, setRunning] = useState(false);
       const [lanes, setLanes] = useState({});
@@ -781,7 +864,16 @@
       const [speedup, setSpeedup] = useState(null);
       const [done, setDone] = useState(false);
       const [count, setCount] = useState(0);
+      const [sys, setSys] = useState({});
       const toast = useToast();
+
+      async function countdown() {
+        for (let c = 3; c >= 1; c--) {
+          setCount(c);
+          await sleep(620);
+        }
+        setCount(0);
+      }
 
       async function race() {
         setRunning(true);
@@ -789,12 +881,7 @@
         setSpeedup(null);
         setLanes({});
         setOutputs({ cerebras: "", gemini: "" });
-        // Cinematic 3-2-1 countdown before the streams kick off.
-        for (let c = 3; c >= 1; c--) {
-          setCount(c);
-          await sleep(620);
-        }
-        setCount(0);
+        await countdown();
         try {
           await streamSSE(`${API}/race?topic=${encodeURIComponent(topic)}`, { method: "POST" }, (ev) => {
             if (ev.type === "race") {
@@ -816,17 +903,82 @@
         }
       }
 
+      async function systemRace() {
+        setRunning(true);
+        setDone(false);
+        setSpeedup(null);
+        setSys({});
+        await countdown();
+        try {
+          await streamSSE(`${API}/race/system?topic=${encodeURIComponent(topic)}`, { method: "POST" }, (ev) => {
+            if (ev.type === "sysrace") {
+              const p = ev.provider;
+              if (ev.agent) {
+                // Agent progress event: append, collapsing start+done per agent.
+                setSys((prev) => {
+                  const lane = prev[p] || { events: [], status: "running" };
+                  const events = lane.events.slice();
+                  if (ev.status === "done") {
+                    const r = [...events].reverse().findIndex((x) => x.agent === ev.agent && !x.total_s);
+                    if (r >= 0) events[events.length - 1 - r] = { ...events[events.length - 1 - r], ...ev };
+                    else events.push(ev);
+                  } else {
+                    events.push(ev);
+                  }
+                  return { ...prev, [p]: { ...lane, events } };
+                });
+              } else if (ev.status === "start") {
+                setSys((prev) => ({ ...prev, [p]: { events: [], status: "running", startedAt: Date.now() } }));
+              } else if (ev.status === "unconfigured") {
+                setSys((prev) => ({ ...prev, [p]: { ...(prev[p] || { events: [] }), status: "unconfigured" } }));
+              } else if (ev.status === "error") {
+                setSys((prev) => ({ ...prev, [p]: { ...(prev[p] || { events: [] }), status: "error", message: ev.message } }));
+                toast((p === "cerebras" ? "Cerebras" : "Gemini") + " lane failed: " + ev.message, "error");
+              } else if (ev.status === "lesson_done") {
+                setSys((prev) => ({
+                  ...prev,
+                  [p]: {
+                    ...(prev[p] || { events: [] }),
+                    status: "done",
+                    elapsed_s: ev.elapsed_s,
+                    model_time_s: ev.model_time_s,
+                    video_html: ev.video_html,
+                    applet_html: ev.applet_html,
+                  },
+                }));
+              }
+            } else if (ev.type === "sysrace_summary") {
+              setSpeedup(ev.speedup_total);
+              setDone(true);
+            }
+          });
+        } catch (e) {
+          toast("Race failed: " + e.message, "error");
+        } finally {
+          setRunning(false);
+        }
+      }
+
       const order = ["cerebras", "gemini"];
-      const winner =
+      const busy = running || count > 0;
+      const startRace = mode === "system" ? systemRace : race;
+      const promptWinner =
         done && lanes.cerebras?.status === "done" && lanes.gemini?.status === "done"
           ? lanes.cerebras.elapsed_s <= lanes.gemini.elapsed_s
             ? "cerebras"
             : "gemini"
           : null;
+      const sysWinner =
+        done && sys.cerebras?.status === "done" && sys.gemini?.status === "done"
+          ? sys.cerebras.elapsed_s <= sys.gemini.elapsed_s
+            ? "cerebras"
+            : "gemini"
+          : null;
+      const winner = mode === "system" ? sysWinner : promptWinner;
 
       return html`
         <div class="overlay" onClick=${(e) => e.target.classList.contains("overlay") && onClose()}>
-          <div class="panel race-modal">
+          <div class=${"panel race-modal" + (mode === "system" ? " wide" : "")}>
             ${count > 0 && html`<div class="countdown"><div class="num" key=${count}>${count}</div></div>`}
             ${speedup != null && winner === "cerebras" && html`<${Confetti} />`}
             <div class="race-head">
@@ -836,9 +988,20 @@
               </h2>
               <button class="icon-link" onClick=${onClose}><${Icon} name="close" size=${15} /> Close</button>
             </div>
+
+            <div class="race-tabs">
+              <button class=${"race-tab" + (mode === "prompt" ? " active" : "")} onClick=${() => !busy && setMode("prompt")}>
+                Prompt
+              </button>
+              <button class=${"race-tab" + (mode === "system" ? " active" : "")} onClick=${() => !busy && setMode("system")}>
+                Full system
+              </button>
+            </div>
+
             <div class="race-sub">
-              Apples-to-apples: <strong>Gemma 4 31B</strong> on Cerebras vs the same weights on Google's
-              Gemini API (GPU). Identical prompt, streamed live.
+              ${mode === "system"
+                ? html`The <strong>whole agent swarm</strong> - Planner, slide deck, explainer video, applet, critic - run end to end on both backends. Watch Cerebras finish a playable lesson while the GPU is still building.`
+                : html`Apples-to-apples: <strong>Gemma 4 31B</strong> on Cerebras vs the same weights on Google's Gemini API (GPU). Identical prompt, streamed live.`}
             </div>
 
             <div class="row" style=${{ marginBottom: "12px" }}>
@@ -846,27 +1009,37 @@
                 type="text"
                 value=${topic}
                 onInput=${(e) => setTopic(e.target.value)}
-                placeholder="Topic to explain…"
+                placeholder=${mode === "system" ? "Concept to teach…" : "Topic to explain…"}
                 style=${{ flex: 1 }}
               />
-              <button onClick=${race} disabled=${running || count > 0}>
-                ${running || count > 0
+              <button onClick=${startRace} disabled=${busy}>
+                ${busy
                   ? "Racing…"
                   : html`<span style=${{ display: "inline-flex", alignItems: "center", gap: "7px" }}>Race <${Icon} name="play" size=${14} /></span>`}
               </button>
             </div>
 
             <div class="race-cols">
-              ${order.map(
-                (p) => html`<${RaceLane}
-                  key=${p}
-                  provider=${p}
-                  d=${lanes[p] || {}}
-                  text=${outputs[p] || ""}
-                  win=${winner === p}
-                  dim=${winner != null && winner !== p}
-                />`
-              )}
+              ${mode === "system"
+                ? order.map(
+                    (p) => html`<${SysLane}
+                      key=${p}
+                      provider=${p}
+                      lane=${sys[p] || {}}
+                      win=${winner === p}
+                      dim=${winner != null && winner !== p}
+                    />`
+                  )
+                : order.map(
+                    (p) => html`<${RaceLane}
+                      key=${p}
+                      provider=${p}
+                      d=${lanes[p] || {}}
+                      text=${outputs[p] || ""}
+                      win=${winner === p}
+                      dim=${winner != null && winner !== p}
+                    />`
+                  )}
             </div>
 
             ${speedup != null && html`<${SpeedupBanner} value=${speedup} />`}

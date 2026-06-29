@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from app import sessions
-from src import race
+from src import race, system_race
 from src.data import pdf_course
 from src.schemas import CourseSession, Lesson, StudentProfile
 
@@ -258,6 +258,28 @@ async def speed_race(topic: str | None = None):
         async for item in _stream_blocking(
             blocking,
             result_type="race_summary",
+            result_serializer=lambda summary: summary,
+        ):
+            yield item
+
+    return EventSourceResponse(gen())
+
+
+@app.post("/race/system")
+async def system_speed_race(topic: str | None = None, grade_level: str = "8th grade"):
+    """Stream a full-pipeline GPU-vs-Cerebras race (the whole agent swarm)."""
+
+    def blocking(sink: Callable[[dict], None]) -> dict:
+        return system_race.run_system_race(
+            lambda ev: sink({"type": "sysrace", **ev}),
+            topic=topic,
+            grade_level=grade_level,
+        )
+
+    async def gen():
+        async for item in _stream_blocking(
+            blocking,
+            result_type="sysrace_summary",
             result_serializer=lambda summary: summary,
         ):
             yield item
